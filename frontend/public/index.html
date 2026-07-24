@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentGrid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #101418;
+      --panel: #182028;
+      --ink: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #2f8f7b;
+      --warn: #c9a227;
+      --bad: #c45c5c;
+      --line: rgba(232,238,244,0.1);
+      --display: "Fraunces", "Iowan Old Style", Georgia, serif;
+      --body: "IBM Plex Sans", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--ink); font-family: var(--body);
+      background:
+        radial-gradient(900px 480px at 0% 0%, rgba(47,143,123,0.18), transparent 55%),
+        radial-gradient(700px 400px at 100% 10%, rgba(201,162,39,0.08), transparent 50%),
+        linear-gradient(165deg, #0c1014, var(--bg) 50%, #141a22);
+      min-height: 100vh;
+    }
+    header { max-width: 1100px; margin: 0 auto; padding: 2.25rem 1.25rem 1rem; }
+    h1 { font-family: var(--display); font-size: clamp(2rem, 4vw, 2.8rem); margin: 0 0 .35rem; letter-spacing: -0.02em; }
+    .lede { color: var(--muted); max-width: 38rem; margin: 0; line-height: 1.45; }
+    main { max-width: 1100px; margin: 0 auto; padding: 0 1.25rem 3rem; display: grid; gap: 1.25rem; }
+    .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.25rem; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    section {
+      background: color-mix(in srgb, var(--panel) 88%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1rem 1.1rem 1.2rem;
+    }
+    h2 { font-size: 0.95rem; font-weight: 600; margin: 0 0 0.85rem; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; align-items: center; }
+    button, select, input {
+      background: transparent; color: var(--ink); border: 1px solid var(--line);
+      border-radius: 6px; padding: 0.45rem 0.7rem; font: inherit;
+    }
+    button { cursor: pointer; }
+    button.primary { border-color: var(--accent); color: #d7fff4; }
+    button:hover { border-color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.5rem 0.35rem; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+    .ok { color: var(--accent); } .fail { color: var(--bad); } .run { color: var(--warn); }
+    .insight { line-height: 1.5; color: var(--ink); }
+    .meta { color: var(--muted); font-size: 0.85rem; }
+    .bar { height: 8px; background: #243040; border-radius: 99px; overflow: hidden; margin-top: 0.25rem; }
+    .bar > i { display: block; height: 100%; background: var(--accent); }
+    pre { white-space: pre-wrap; font-size: 0.78rem; color: var(--muted); max-height: 160px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AgentGrid</h1>
+    <p class="lede">Coordinator board for coding jobs, multi- vs single-agent eval, and privacy-aware research-journey analytics.</p>
+  </header>
+  <main>
+    <div class="row">
+      <label class="meta">API token <input id="token" value="dev-token" /></label>
+      <button type="button" id="refresh">Refresh</button>
+      <span class="meta" id="health">…</span>
+    </div>
+
+    <div class="grid">
+      <section>
+        <h2>Coding jobs</h2>
+        <div class="row">
+          <select id="issue"></select>
+          <select id="mode">
+            <option value="multi">multi</option>
+            <option value="single">single</option>
+          </select>
+          <button class="primary" type="button" id="submit">Enqueue</button>
+          <button type="button" id="runEval">Run eval</button>
+        </div>
+        <table>
+          <thead><tr><th>Issue</th><th>Mode</th><th>Status</th><th>Tokens</th><th>$</th><th>ms</th></tr></thead>
+          <tbody id="jobs"></tbody>
+        </table>
+        <pre id="jobDetail"></pre>
+      </section>
+
+      <section>
+        <h2>Research journey funnel</h2>
+        <p class="insight" id="insight">Load funnel after seeding analytics.</p>
+        <div id="funnel"></div>
+        <p class="meta" style="margin-top:1rem">Seed: <code>python scripts/seed_analytics.py</code></p>
+      </section>
+    </div>
+
+    <section>
+      <h2>Eval summary</h2>
+      <pre id="evalOut">Run eval to compare multi vs single agent success rates.</pre>
+    </section>
+  </main>
+  <script>
+    const tokenEl = document.getElementById("token");
+    const headers = () => ({
+      "Authorization": `Bearer ${tokenEl.value}`,
+      "Content-Type": "application/json",
+    });
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.json();
+    }
+
+    function statusClass(s) {
+      if (s === "succeeded") return "ok";
+      if (s === "failed" || s === "cancelled") return "fail";
+      return "run";
+    }
+
+    async function loadIssues() {
+      const issues = await api("/api/jobs/issues");
+      const sel = document.getElementById("issue");
+      sel.innerHTML = issues.map(i => `<option value="${i.issue_id}">${i.issue_id}</option>`).join("");
+    }
+
+    async function loadJobs() {
+      const jobs = await api("/api/jobs");
+      const tb = document.getElementById("jobs");
+      tb.innerHTML = jobs.map(j => `
+        <tr data-id="${j.id}">
+          <td>${j.issue_id}</td>
+          <td>${j.mode}</td>
+          <td class="${statusClass(j.status)}">${j.status}</td>
+          <td>${j.tokens_used}</td>
+          <td>${j.cost_usd.toFixed(4)}</td>
+          <td>${j.latency_ms}</td>
+        </tr>`).join("");
+      tb.querySelectorAll("tr").forEach(tr => tr.addEventListener("click", async () => {
+        const j = await api(`/api/jobs/${tr.dataset.id}`);
+        document.getElementById("jobDetail").textContent =
+          (j.patch_text || "") + "\n\n" + (j.verify_log || j.error || "");
+      }));
+    }
+
+    async function loadFunnel() {
+      const data = await api("/api/analytics/funnel");
+      document.getElementById("insight").textContent = data.insight?.text || "";
+      const max = Math.max(...data.funnel.steps.map(s => s.sessions), 1);
+      document.getElementById("funnel").innerHTML = data.funnel.steps.map(s => `
+        <div style="margin-bottom:0.65rem">
+          <div class="meta">${s.step} · ${s.sessions}${s.conversion_from_prev != null ? ` · ${(s.conversion_from_prev*100).toFixed(0)}%` : ""}</div>
+          <div class="bar"><i style="width:${(s.sessions/max)*100}%"></i></div>
+        </div>`).join("");
+    }
+
+    async function loadHealth() {
+      const h = await fetch("/api/health").then(r => r.json());
+      document.getElementById("health").textContent =
+        `v${h.version} · queue ${h.queue_depth} · redis ${h.use_redis ? "on" : "off"}`;
+    }
+
+    document.getElementById("submit").onclick = async () => {
+      await api("/api/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          issue_id: document.getElementById("issue").value,
+          mode: document.getElementById("mode").value,
+        }),
+      });
+      await loadJobs();
+    };
+
+    document.getElementById("runEval").onclick = async () => {
+      const summary = await api("/api/eval/run", { method: "POST", body: "{}" });
+      document.getElementById("evalOut").textContent = JSON.stringify(summary, null, 2);
+    };
+
+    document.getElementById("refresh").onclick = async () => {
+      await Promise.all([loadHealth(), loadJobs(), loadFunnel().catch(() => {})]);
+    };
+
+    (async () => {
+      await loadIssues();
+      await document.getElementById("refresh").onclick();
+      setInterval(() => loadJobs().catch(() => {}), 2000);
+    })();
+  </script>
+</body>
+</html>

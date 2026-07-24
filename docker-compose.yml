@@ -1,0 +1,43 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    command: uvicorn agentgrid.main:app --host 0.0.0.0 --port 8000
+    environment:
+      AGENTGRID_DATABASE_URL: sqlite:////data/agentgrid.db
+      AGENTGRID_REDIS_URL: redis://redis:6379/0
+      AGENTGRID_USE_REDIS: "1"
+      AGENTGRID_API_TOKEN: dev-token
+      AGENTGRID_ARTIFACT_DIR: /data/artifacts
+      AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      PYTHONPATH: /app/backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - agdata:/data
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    command: python -m agentgrid.workers.coding_worker
+    environment:
+      AGENTGRID_DATABASE_URL: sqlite:////data/agentgrid.db
+      AGENTGRID_REDIS_URL: redis://redis:6379/0
+      AGENTGRID_USE_REDIS: "1"
+      AGENTGRID_API_TOKEN: dev-token
+      AGENTGRID_ARTIFACT_DIR: /data/artifacts
+      AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      PYTHONPATH: /app/backend
+    volumes:
+      - agdata:/data
+    depends_on:
+      - redis
+      - api
+
+volumes:
+  agdata:
