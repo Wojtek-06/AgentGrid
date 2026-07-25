@@ -6,7 +6,7 @@ Last updated: 2026-07-25
 |---------|------|-------------|--------|
 | **1 — QuantForge** | https://github.com/Wojtek-06/QuantForge | `8ecc7ee` | **Done for sprint** — LOB/MM/backtest, stops, signals, stress configs, Docker, evidence scripts. Your job: run evidence + optional demo video. |
 | **2 — ChainVenue** | https://github.com/Wojtek-06/ChainVenue | `4c8cfb9` | **Done for sprint** — EVM lab, CPAMM, hedge path, adversarial tests, dashboard ledger, threat/latency docs. Your job: Anvil demo + optional video. |
-| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | in progress | **MVP + ops slice** — agents/eval/analytics shipped; continuing merge/cancel/metrics/retention. |
+| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | in progress | **MVP + ops + observability** — third dogfood issue, SSE, request IDs, merge tests, Postgres profile. |
 
 ## QuantForge — what “done” means
 
@@ -29,11 +29,15 @@ Last updated: 2026-07-25
 | Slice | State |
 |-------|--------|
 | Coordinator + workers + queue + verifier | Done |
-| Multi vs single eval (dogfood QF/CV-shaped) | Done |
+| Multi vs single eval (dogfood QF/CV-shaped) | Done (3 issues; published JSON) |
 | Research-journey analytics + privacy | Done |
-| Merge artifacts + review checklist | This slice |
-| Cancel / retry / backpressure | This slice |
-| Metrics overview + dashboard board | This slice |
-| Operator funnel + retention cohorts | This slice |
+| Merge artifacts + review checklist | Done |
+| Merge conflict risk + tests | Done |
+| Cancel / retry / backpressure | Done |
+| Metrics overview + dashboard board | Done |
+| SSE live job status | Done |
+| Structured logs + request IDs | Done |
+| Operator funnel + retention cohorts | Done |
+| Optional Postgres compose profile | Done |
 | Real LLM planner (optional) | Later |
 | User demo video | You |

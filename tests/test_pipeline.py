@@ -20,3 +20,14 @@ def test_both_modes_fix_basis_issue():
     m = run_multi_agent("cv-basis-bps", job_id="t-multi-cv")
     assert s.succeeded
     assert m.succeeded
+
+
+def test_multi_fixes_hard_ewma_issue():
+    result = run_multi_agent("qf-ewma-alpha", job_id="t-multi-ewma")
+    assert result.succeeded
+    assert "retry" in result.verify_log or result.patch_text
+
+
+def test_single_fails_hard_ewma_issue():
+    result = run_single_agent("qf-ewma-alpha", job_id="t-single-ewma")
+    assert not result.succeeded

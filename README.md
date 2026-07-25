@@ -21,7 +21,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```
 API (FastAPI) → queue (Redis or local) → coding workers + verifier
                      ↘ analytics ingest → funnel / privacy / insights
-                     ↘ dashboard board (tokens, $, latency, status)
+                     ↘ dashboard board (tokens, $, latency, status + SSE)
 ```
 
 Dogfood issues (local sandboxes, QuantForge/ChainVenue-shaped):
@@ -29,7 +29,17 @@ Dogfood issues (local sandboxes, QuantForge/ChainVenue-shaped):
 | Issue ID | Story |
 |----------|--------|
 | `qf-leakage-guard` | Look-ahead mid bug — multi retries, single fails |
+| `qf-ewma-alpha` | EWMA weights swapped — multi retries, single fails |
 | `cv-basis-bps` | Wrong basis sign — both modes can fix |
+
+### Published eval (sample)
+
+From `data/eval_results.json` (regenerate with `python scripts/run_eval.py`):
+
+| Mode | Success rate | Avg tokens |
+|------|--------------|------------|
+| Single-agent | 33% (1/3) | ~200 |
+| Multi-agent | 100% (3/3) | ~287 |
 
 ---
 
@@ -60,7 +70,13 @@ python scripts\seed_analytics.py
 
 Tests: `python -m pytest -q` (with `PYTHONPATH=backend`).
 
-Docker: `docker compose up --build` then scale workers with `--scale worker=2`.
+Docker (SQLite default): `docker compose up --build` then scale workers with `--scale worker=2`.
+
+Optional Postgres profile (keeps SQLite for CI/default):
+
+```bash
+docker compose --profile postgres up --build api-pg worker-pg postgres redis
+```
 
 ---
 
@@ -72,11 +88,17 @@ Docker: `docker compose up --build` then scale workers with `--scale worker=2`.
 | GET | `/api/jobs/issues` | Dogfood catalog |
 | POST | `/api/jobs` | `{issue_id, mode, idempotency_key?}` |
 | GET | `/api/jobs` | Board |
+| GET | `/api/jobs/stream` | SSE live board (`?token=` for EventSource) |
+| POST | `/api/jobs/{id}/cancel` | Cancel queued/running |
+| POST | `/api/jobs/{id}/retry` | Re-enqueue failed/cancelled |
 | POST | `/api/eval/run` | Multi vs single table |
+| GET | `/api/metrics/overview` | Tokens / $ / latency / queue |
 | POST | `/api/analytics/events` | Batch ingest |
 | GET | `/api/analytics/funnel` | Funnel + anomalies + insight |
 | POST | `/api/analytics/consent` | Consent flag |
 | DELETE | `/api/analytics/users/{id}` | Erase + block |
+
+Responses include `X-Request-ID` (echo client header or generate). API + worker logs use structured `request_id=…` fields.
 
 ---
 
@@ -85,14 +107,17 @@ Docker: `docker compose up --build` then scale workers with `--scale worker=2`.
 | Deliverable | Status |
 |-------------|--------|
 | Coordinator + workers + queue + verifier | Done (local/Redis) |
-| Multi vs single eval | Done (`scripts/run_eval.py`) |
+| Multi vs single eval | Done (`scripts/run_eval.py` → `data/eval_results.json`) |
 | Merge artifacts + human review checklist | Done |
+| Merge conflict risk surfacing + tests | Done |
 | Cancel / retry / queue backpressure | Done |
-| Observability metrics API | Done (`/api/metrics/overview`) |
+| Observability metrics + request IDs / structured logs | Done |
+| SSE live job board | Done |
 | Analytics + privacy | Done (research journeys) |
 | Operator telemetry + retention cohorts | Done |
+| Optional Postgres compose profile | Done (SQLite remains CI default) |
 | Horizontal scale story | Documented + compose `--scale worker=N` |
-| Dogfood on QF/CV-shaped issues | Local sandboxes |
+| Dogfood on QF/CV-shaped issues | 3 local sandboxes |
 | Evidence pack / demo video | Docs ready; video user-owned |
 
 Sibling status: [`docs/PORTFOLIO_STATUS.md`](docs/PORTFOLIO_STATUS.md)  
@@ -102,5 +127,5 @@ Docs: [`docs/EVIDENCE_PACK.md`](docs/EVIDENCE_PACK.md) · [`docs/THREAT_PRIVACY.
 
 ## Sibling projects
 
-- [QuantForge](https://github.com/Wojtek-06/QuantForge) — C++ LOB MM lab (dogfood-shaped issue)
+- [QuantForge](https://github.com/Wojtek-06/QuantForge) — C++ LOB MM lab (dogfood-shaped issues)
 - [ChainVenue](https://github.com/Wojtek-06/ChainVenue) — Foundry CLOB–AMM lab (dogfood-shaped issue)

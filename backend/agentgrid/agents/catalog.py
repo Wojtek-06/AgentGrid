@@ -40,6 +40,16 @@ ISSUES: dict[str, IssueSpec] = {
         description="Basis should be CLOB − AMM in bps so positive means CLOB rich.",
         single_agent_fail_first=False,
     ),
+    "qf-ewma-alpha": IssueSpec(
+        issue_id="qf-ewma-alpha",
+        title="Fix EWMA weight order (QuantForge-shaped)",
+        sandbox_rel="dogfood_qf_ewma",
+        broken_file="ewma.py",
+        broken_snippet="return (1.0 - alpha) * observation + alpha * prev",
+        fixed_snippet="return alpha * observation + (1.0 - alpha) * prev",
+        description="EWMA must weight the new observation by alpha, not (1-alpha).",
+        single_agent_fail_first=True,
+    ),
 }
 
 

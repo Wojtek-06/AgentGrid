@@ -9,10 +9,16 @@ from agentgrid.agents.pipeline import run_pipeline
 from agentgrid.config import settings
 from agentgrid.db import SessionLocal, init_db
 from agentgrid.models import Job, JobStatus
+from agentgrid.observability import configure_logging, get_logger, new_request_id, request_id_ctx
 from agentgrid.queue import get_broker
+
+configure_logging()
+log = get_logger("agentgrid.worker")
 
 
 def process_job(job_id: str, worker_id: str) -> None:
+    rid = new_request_id()
+    token = request_id_ctx.set(rid)
     db = SessionLocal()
     try:
         job = db.get(Job, job_id)
@@ -27,6 +33,7 @@ def process_job(job_id: str, worker_id: str) -> None:
         job.worker_id = worker_id
         job.attempts += 1
         db.commit()
+        log.info("action=planning job_id=%s worker_id=%s attempt=%s", job_id, worker_id, job.attempts)
 
         # Re-check cancel between stages (idempotent recovery).
         db.refresh(job)
@@ -64,6 +71,13 @@ def process_job(job_id: str, worker_id: str) -> None:
             integrate_result(db, job, result)
 
         db.commit()
+        log.info(
+            "action=finish job_id=%s status=%s tokens=%s latency_ms=%s",
+            job_id,
+            job.status.value,
+            job.tokens_used,
+            job.latency_ms,
+        )
     except Exception as exc:  # noqa: BLE001 — worker boundary
         db.rollback()
         job = db.get(Job, job_id)
@@ -71,20 +85,22 @@ def process_job(job_id: str, worker_id: str) -> None:
             job.status = JobStatus.failed
             job.error = f"{exc}\n{traceback.format_exc()}"
             db.commit()
+        log.exception("action=error job_id=%s err=%s", job_id, exc)
     finally:
         db.close()
+        request_id_ctx.reset(token)
 
 
 def run_forever(worker_id: str | None = None) -> None:
     init_db()
     worker_id = worker_id or f"{socket.gethostname()}-{id(object())}"
     broker = get_broker()
-    print(f"[worker {worker_id}] polling queue…", flush=True)
+    log.info("action=poll_start worker_id=%s", worker_id)
     while True:
         item = broker.dequeue(timeout_s=max(0.2, settings.worker_poll_ms / 1000))
         if not item:
             continue
-        print(f"[worker {worker_id}] job={item['job_id']}", flush=True)
+        log.info("action=dequeue job_id=%s worker_id=%s", item["job_id"], worker_id)
         process_job(item["job_id"], worker_id)
 
 

@@ -12,7 +12,8 @@ build/
 node_modules/
 frontend/dist/
 .artifacts/
-data/
+data/*
+!data/eval_results.json
 *.db
 .DS_Store
 .coverage

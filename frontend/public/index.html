@@ -220,13 +220,33 @@
       await Promise.all([loadHealth(), loadJobs(), loadFunnel().catch(() => {})]);
     };
 
+    let jobSource = null;
+    function connectJobStream() {
+      if (jobSource) {
+        jobSource.close();
+        jobSource = null;
+      }
+      const tok = encodeURIComponent(tokenEl.value);
+      jobSource = new EventSource(`/api/jobs/stream?token=${tok}`);
+      jobSource.addEventListener("jobs", async () => {
+        await loadJobs().catch(() => {});
+        await loadHealth().catch(() => {});
+      });
+      jobSource.onerror = () => {
+        /* browser will retry; fall back poll keeps board alive */
+      };
+    }
+
+    tokenEl.addEventListener("change", connectJobStream);
+
     (async () => {
       await loadIssues();
       await document.getElementById("refresh").onclick();
+      connectJobStream();
       setInterval(() => {
         loadJobs().catch(() => {});
         loadHealth().catch(() => {});
-      }, 2000);
+      }, 5000);
     })();
   </script>
 </body>

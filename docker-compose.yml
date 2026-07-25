@@ -4,6 +4,23 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentgrid
+      POSTGRES_PASSWORD: agentgrid
+      POSTGRES_DB: agentgrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentgrid -d agentgrid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: .
     command: uvicorn agentgrid.main:app --host 0.0.0.0 --port 8000
@@ -22,6 +39,28 @@ services:
     depends_on:
       - redis
 
+  api-pg:
+    profiles: ["postgres"]
+    build: .
+    command: uvicorn agentgrid.main:app --host 0.0.0.0 --port 8000
+    environment:
+      AGENTGRID_DATABASE_URL: postgresql+psycopg://agentgrid:agentgrid@postgres:5432/agentgrid
+      AGENTGRID_REDIS_URL: redis://redis:6379/0
+      AGENTGRID_USE_REDIS: "1"
+      AGENTGRID_API_TOKEN: dev-token
+      AGENTGRID_ARTIFACT_DIR: /data/artifacts
+      AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      PYTHONPATH: /app/backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - agdata:/data
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
   worker:
     build: .
     command: python -m agentgrid.workers.coding_worker
@@ -39,5 +78,28 @@ services:
       - redis
       - api
 
+  worker-pg:
+    profiles: ["postgres"]
+    build: .
+    command: python -m agentgrid.workers.coding_worker
+    environment:
+      AGENTGRID_DATABASE_URL: postgresql+psycopg://agentgrid:agentgrid@postgres:5432/agentgrid
+      AGENTGRID_REDIS_URL: redis://redis:6379/0
+      AGENTGRID_USE_REDIS: "1"
+      AGENTGRID_API_TOKEN: dev-token
+      AGENTGRID_ARTIFACT_DIR: /data/artifacts
+      AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      PYTHONPATH: /app/backend
+    volumes:
+      - agdata:/data
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      api-pg:
+        condition: service_started
+
 volumes:
   agdata:
+  pgdata:

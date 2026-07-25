@@ -23,11 +23,13 @@ workers  (pytest)  (funnel / privacy)
 
 ## Coding vertical
 
-1. `POST /api/jobs` enqueues an issue (`qf-leakage-guard` / `cv-basis-bps` dogfood sandboxes).
+1. `POST /api/jobs` enqueues an issue (`qf-leakage-guard` / `qf-ewma-alpha` / `cv-basis-bps` dogfood sandboxes).
 2. Worker dequeues → **plan** → isolated workspace copy → **patch** → **pytest verifier**.
 3. **Multi-agent:** verifier failure triggers retry with corrected patch.
-4. **Single-agent:** one-shot; fails the hard leakage issue on purpose for eval contrast.
+4. **Single-agent:** one-shot; fails hard QF issues on purpose for eval contrast.
 5. Metrics: tokens (simulated), cost USD, latency ms, attempts.
+6. Merge path writes patch + `REVIEW_CHECKLIST.md`; flags `merge_conflict_risk` if the same sandbox file already succeeded.
+7. `GET /api/jobs/stream` (SSE) + `X-Request-ID` structured logs for live ops.
 
 ## Analytics vertical
 

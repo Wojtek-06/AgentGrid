@@ -12,13 +12,19 @@ from agentgrid.api import analytics, eval_api, jobs, metrics
 from agentgrid.config import ROOT, settings
 from agentgrid.db import init_db
 from agentgrid.middleware.rate_limit import RateLimitMiddleware
+from agentgrid.middleware.request_id import RequestIdMiddleware
+from agentgrid.observability import configure_logging, get_logger
 from agentgrid.queue import get_broker
+
+configure_logging()
+log = get_logger("agentgrid.main")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
     get_broker()
+    log.info("action=startup version=%s use_redis=%s", __version__, settings.use_redis)
     yield
 
 
@@ -39,6 +45,7 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(jobs.router)
 app.include_router(analytics.router)

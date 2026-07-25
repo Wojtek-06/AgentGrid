@@ -1,0 +1,54 @@
+{
+  "n_issues": 3,
+  "single_success_rate": 0.3333,
+  "multi_success_rate": 1.0,
+  "single_avg_tokens": 200.0,
+  "multi_avg_tokens": 286.7,
+  "rows": [
+    {
+      "issue_id": "qf-leakage-guard",
+      "single": {
+        "succeeded": false,
+        "tokens": 200,
+        "cost_usd": 0.004,
+        "latency_ms": 1602
+      },
+      "multi": {
+        "succeeded": true,
+        "tokens": 320,
+        "cost_usd": 0.0064,
+        "latency_ms": 3297
+      }
+    },
+    {
+      "issue_id": "cv-basis-bps",
+      "single": {
+        "succeeded": true,
+        "tokens": 200,
+        "cost_usd": 0.004,
+        "latency_ms": 1469
+      },
+      "multi": {
+        "succeeded": true,
+        "tokens": 220,
+        "cost_usd": 0.0044,
+        "latency_ms": 1419
+      }
+    },
+    {
+      "issue_id": "qf-ewma-alpha",
+      "single": {
+        "succeeded": false,
+        "tokens": 200,
+        "cost_usd": 0.004,
+        "latency_ms": 1603
+      },
+      "multi": {
+        "succeeded": true,
+        "tokens": 320,
+        "cost_usd": 0.0064,
+        "latency_ms": 3128
+      }
+    }
+  ]
+}

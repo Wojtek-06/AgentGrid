@@ -20,7 +20,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
-        if request.url.path == "/api/health":
+        if request.url.path in {"/api/health", "/api/jobs/stream"}:
             return await call_next(request)
 
         ip = request.client.host if request.client else "unknown"
