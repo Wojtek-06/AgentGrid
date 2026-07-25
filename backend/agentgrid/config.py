@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     use_redis: bool = False
     max_queue_depth: int = 32
     rate_limit_per_minute: int = 120
+    # Soft wall-clock budget for one coding job (plan → verify → merge).
+    job_timeout_s: int = 120
+    # Pytest subprocess timeout inside the verifier.
+    verify_timeout_s: int = 30
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
 
 

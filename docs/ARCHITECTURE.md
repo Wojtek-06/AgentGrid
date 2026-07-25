@@ -46,3 +46,4 @@ Trading/research product journeys (not fitness):
 - Add workers: second process / `docker compose up --scale worker=2`
 - Redis queue for multi-process; local deque for CI/dev
 - Idempotency keys on job create; retries counted on job row
+- Worker wall-clock budget: `AGENTGRID_JOB_TIMEOUT_S` (default 120); pytest budget: `AGENTGRID_VERIFY_TIMEOUT_S` (default 30)

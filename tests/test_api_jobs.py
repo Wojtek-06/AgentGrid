@@ -31,3 +31,15 @@ def test_create_and_process_job(client):
 
 def test_health(client):
     assert client.get("/api/health").json()["ok"] is True
+
+
+def test_jobs_require_bearer_token(client):
+    r = client.get("/api/jobs")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "unauthorized"
+
+
+def test_jobs_accept_query_token_for_sse_style(client):
+    r = client.get("/api/jobs", params={"token": "test-token"})
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)

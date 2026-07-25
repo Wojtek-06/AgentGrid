@@ -1,3 +1,11 @@
+# AgentGrid — default stack uses Redis + SQLite (volume).
+# Scale coding workers that share the Redis queue:
+#   docker compose up --build --scale worker=2
+#
+# Optional Postgres (profile "postgres") — do not start default api/worker
+# alongside api-pg/worker-pg on the same host port:
+#   docker compose --profile postgres up --build api-pg worker-pg postgres redis
+
 services:
   redis:
     image: redis:7-alpine
@@ -31,6 +39,8 @@ services:
       AGENTGRID_API_TOKEN: dev-token
       AGENTGRID_ARTIFACT_DIR: /data/artifacts
       AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      AGENTGRID_JOB_TIMEOUT_S: "120"
+      AGENTGRID_VERIFY_TIMEOUT_S: "30"
       PYTHONPATH: /app/backend
     ports:
       - "8000:8000"
@@ -39,6 +49,7 @@ services:
     depends_on:
       - redis
 
+  # Postgres-backed API (profile). Same host port 8000 as `api` — pick one stack.
   api-pg:
     profiles: ["postgres"]
     build: .
@@ -50,6 +61,8 @@ services:
       AGENTGRID_API_TOKEN: dev-token
       AGENTGRID_ARTIFACT_DIR: /data/artifacts
       AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      AGENTGRID_JOB_TIMEOUT_S: "120"
+      AGENTGRID_VERIFY_TIMEOUT_S: "30"
       PYTHONPATH: /app/backend
     ports:
       - "8000:8000"
@@ -61,6 +74,7 @@ services:
       postgres:
         condition: service_healthy
 
+  # Scale with: docker compose up --scale worker=N
   worker:
     build: .
     command: python -m agentgrid.workers.coding_worker
@@ -71,6 +85,8 @@ services:
       AGENTGRID_API_TOKEN: dev-token
       AGENTGRID_ARTIFACT_DIR: /data/artifacts
       AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      AGENTGRID_JOB_TIMEOUT_S: "120"
+      AGENTGRID_VERIFY_TIMEOUT_S: "30"
       PYTHONPATH: /app/backend
     volumes:
       - agdata:/data
@@ -89,6 +105,8 @@ services:
       AGENTGRID_API_TOKEN: dev-token
       AGENTGRID_ARTIFACT_DIR: /data/artifacts
       AGENTGRID_SANDBOX_ROOT: /app/sandbox
+      AGENTGRID_JOB_TIMEOUT_S: "120"
+      AGENTGRID_VERIFY_TIMEOUT_S: "30"
       PYTHONPATH: /app/backend
     volumes:
       - agdata:/data

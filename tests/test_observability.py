@@ -31,3 +31,13 @@ def test_jobs_stream_emits_snapshot(client):
         body = "".join(response.iter_text())
     assert "event: jobs" in body
     assert "cv-basis-bps" in body
+
+
+def test_jobs_stream_accepts_query_token(client):
+    with client.stream(
+        "GET",
+        "/api/jobs/stream?token=test-token&max_events=1",
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+    assert "event:" in body

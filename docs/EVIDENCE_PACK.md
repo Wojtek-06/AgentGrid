@@ -11,7 +11,7 @@ python scripts\run_eval.py
 python scripts\seed_analytics.py
 ```
 
-Eval JSON: `data/eval_results.json` (multi vs single success rates).
+Eval JSON: [`data/eval_results.json`](../data/eval_results.json) (multi vs single success rates).
 
 ### Sample published numbers (3 dogfood issues)
 
@@ -24,11 +24,12 @@ Eval JSON: `data/eval_results.json` (multi vs single success rates).
 
 Regenerate after catalog changes; commit `data/eval_results.json` when rates change.
 
-## Local demo
+## Local demo (prep)
 
 ```powershell
 # Terminal A — API
 $env:PYTHONPATH = "backend"
+$env:AGENTGRID_API_TOKEN = "dev-token"
 python -m uvicorn agentgrid.main:app --reload --port 8000
 
 # Terminal B — worker
@@ -36,16 +37,29 @@ $env:PYTHONPATH = "backend"
 python -m agentgrid.workers.coding_worker
 ```
 
-Open http://127.0.0.1:8000 — token `dev-token`.
+Open http://127.0.0.1:8000 — token field `dev-token`. Confirm SSE shows **live** and health strip has a queue depth.
 
-1. Enqueue `qf-leakage-guard` or `qf-ewma-alpha` as **single** (fails) and **multi** (succeeds after retry).
-2. Click **Run eval** — show success-rate table; note metrics strip (tokens / $ / latency).
-3. Open succeeded job — show patch artifact path + `REVIEW_CHECKLIST.md` under `.artifacts/`.
-4. Enqueue the same issue twice as multi — second job surfaces `merge_conflict_risk` in plan/error.
-5. Seed analytics, Refresh — narrate grounded insight, day-1 retention, operator funnel.
-6. Privacy: `DELETE /api/analytics/users/u1` then show event count 0.
-7. Cancel a queued job / retry a failed one — operator recovery story.
-8. Point at live board updates via SSE (`/api/jobs/stream`) and `X-Request-ID` on API responses.
+---
+
+## 5-minute interview script (exact clicks)
+
+| Min | Click / say |
+|-----|-------------|
+| **0:00–0:45** | Open the board. Point at **AgentGrid** header + status board (counts) + metrics strip. Say: coordinator API, Redis/local queue, coding workers, verifier gate — no live LLM in CI. |
+| **0:45–1:45** | Issue dropdown → `qf-leakage-guard`. Mode → **single**. Click **Enqueue**. Wait until status **failed**. Click the row → show verify log / error in the detail pane. |
+| **1:45–2:45** | Same issue, mode → **multi**. Click **Enqueue**. Wait until **succeeded**. Click the row → show patch text + retry section in verify log. Call out status-board counts updating live (SSE **live**). |
+| **2:45–3:30** | Click **Run eval**. Scroll to **Eval summary** — multi **1.0** / single **~0.33**. Point at committed [`data/eval_results.json`](../data/eval_results.json). |
+| **3:30–4:15** | Click a succeeded row → mention `.artifacts/<job_id>/` patch + `REVIEW_CHECKLIST.md`. Optional: enqueue the same issue again as multi → note `merge_conflict_risk` in plan/error. |
+| **4:15–5:00** | If seeded: **Refresh** → narrate research funnel insight + day-1 retention. Point at `req <id>` (X-Request-ID) and SSE reconnect hint if you toggle the network. Privacy one-liner: `DELETE /api/analytics/users/u1` erases + blocks. |
+
+Skip cancel/retry / Docker scale unless asked — those are in the longer checklist below.
+
+## Longer demo checklist (optional)
+
+1. Enqueue `qf-ewma-alpha` single (fails) vs multi (succeeds).
+2. Cancel a queued job / retry a failed one.
+3. `docker compose up --build --scale worker=2` for horizontal scale.
+4. Privacy: `DELETE /api/analytics/users/u1` then show event count 0.
 
 ## Docker
 
@@ -54,7 +68,7 @@ Open http://127.0.0.1:8000 — token `dev-token`.
 docker compose up --build
 docker compose up --scale worker=2
 
-# Optional Postgres profile
+# Optional Postgres profile (do not mix with default api on :8000)
 docker compose --profile postgres up --build api-pg worker-pg postgres redis
 ```
 
@@ -66,3 +80,4 @@ docker compose --profile postgres up --build api-pg worker-pg postgres redis
 - Dogfood sandboxes shaped like QuantForge leakage/EWMA + ChainVenue basis bugs
 - Merge conflict risk when re-patching the same sandbox file
 - Request-ID structured logs + SSE board for ops story
+- Configurable job / verifier timeouts (`AGENTGRID_JOB_TIMEOUT_S`, `AGENTGRID_VERIFY_TIMEOUT_S`)

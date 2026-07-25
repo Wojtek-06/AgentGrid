@@ -59,6 +59,25 @@
     .bar { height: 8px; background: #243040; border-radius: 99px; overflow: hidden; margin-top: 0.25rem; }
     .bar > i { display: block; height: 100%; background: var(--accent); }
     pre { white-space: pre-wrap; font-size: 0.78rem; color: var(--muted); max-height: 160px; overflow: auto; }
+    .status-board {
+      display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem;
+      font-variant-numeric: tabular-nums; font-size: 0.9rem;
+    }
+    .status-board span strong { font-weight: 600; color: var(--ink); }
+    .banner {
+      display: none; margin: 0 0 0.5rem; padding: 0.55rem 0.75rem;
+      border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line));
+      border-radius: 6px; color: #f0cfcf; font-size: 0.88rem; line-height: 1.4;
+    }
+    .banner.show { display: block; }
+    .banner.warn {
+      border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+      color: #e8d9a8;
+    }
+    #sseState.live { color: var(--accent); }
+    #sseState.retry { color: var(--warn); }
+    #sseState.off { color: var(--bad); }
+    code.rid { font-size: 0.8rem; color: var(--ink); }
   </style>
 </head>
 <body>
@@ -67,12 +86,18 @@
     <p class="lede">Coordinator board for coding jobs, multi- vs single-agent eval, and privacy-aware research-journey analytics.</p>
   </header>
   <main>
+    <div id="authBanner" class="banner">Set an API token (Bearer) before calling protected routes. Default: <code>dev-token</code>.</div>
+    <div id="sseBanner" class="banner warn">Live stream disconnected — browser will retry; board still polls every 5s.</div>
+
     <div class="row">
-      <label class="meta">API token <input id="token" value="dev-token" /></label>
+      <label class="meta">API token <input id="token" value="dev-token" autocomplete="off" /></label>
       <button type="button" id="refresh">Refresh</button>
       <span class="meta" id="health">…</span>
+      <span class="meta">SSE <span id="sseState" class="off">off</span></span>
+      <span class="meta">req <code class="rid" id="lastRid">—</code></span>
     </div>
     <div class="row meta" id="metrics">Metrics loading…</div>
+    <div class="status-board meta" id="statusBoard">Board idle</div>
 
     <div class="grid">
       <section>
@@ -113,14 +138,41 @@
   </main>
   <script>
     const tokenEl = document.getElementById("token");
+    const authBanner = document.getElementById("authBanner");
+    const sseBanner = document.getElementById("sseBanner");
+    const sseState = document.getElementById("sseState");
+    const lastRid = document.getElementById("lastRid");
+
+    function tokenValue() {
+      return (tokenEl.value || "").trim();
+    }
+
+    function requireToken() {
+      const ok = Boolean(tokenValue());
+      authBanner.classList.toggle("show", !ok);
+      return ok;
+    }
+
     const headers = () => ({
-      "Authorization": `Bearer ${tokenEl.value}`,
+      "Authorization": `Bearer ${tokenValue()}`,
       "Content-Type": "application/json",
     });
 
     async function api(path, opts = {}) {
+      if (!requireToken()) {
+        throw new Error("missing API token — set Bearer token (default: dev-token)");
+      }
       const res = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
-      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      const rid = res.headers.get("X-Request-ID");
+      if (rid) lastRid.textContent = rid;
+      if (!res.ok) {
+        const body = await res.text();
+        if (res.status === 401) {
+          authBanner.textContent = "Unauthorized — check Bearer token (default: dev-token).";
+          authBanner.classList.add("show");
+        }
+        throw new Error(`${res.status} ${body}`);
+      }
       return res.json();
     }
 
@@ -128,6 +180,17 @@
       if (s === "succeeded") return "ok";
       if (s === "failed" || s === "cancelled") return "fail";
       return "run";
+    }
+
+    function renderStatusBoard(jobs) {
+      const counts = {};
+      for (const j of jobs) counts[j.status] = (counts[j.status] || 0) + 1;
+      const order = ["queued", "planning", "coding", "verifying", "integrating", "succeeded", "failed", "cancelled"];
+      const parts = order
+        .filter(k => counts[k])
+        .map(k => `<span class="${statusClass(k)}"><strong>${counts[k]}</strong> ${k}</span>`);
+      document.getElementById("statusBoard").innerHTML =
+        parts.length ? parts.join("") : "<span>No jobs yet — enqueue an issue</span>";
     }
 
     async function loadIssues() {
@@ -149,6 +212,7 @@
 
     async function loadJobs() {
       const jobs = await api("/api/jobs");
+      renderStatusBoard(jobs);
       const tb = document.getElementById("jobs");
       tb.innerHTML = jobs.map(j => `
         <tr data-id="${j.id}" style="${j.id === selectedJobId ? "outline:1px solid var(--accent)" : ""}">
@@ -180,9 +244,13 @@
     }
 
     async function loadHealth() {
-      const h = await fetch("/api/health").then(r => r.json());
+      const hRes = await fetch("/api/health");
+      const rid = hRes.headers.get("X-Request-ID");
+      if (rid) lastRid.textContent = rid;
+      const h = await hRes.json();
       document.getElementById("health").textContent =
         `v${h.version} · queue ${h.queue_depth} · redis ${h.use_redis ? "on" : "off"}`;
+      if (!requireToken()) return;
       const m = await api("/api/metrics/overview");
       document.getElementById("metrics").textContent =
         `jobs ${m.jobs_total} · success ${(m.success_rate*100).toFixed(0)}% · tokens ${m.tokens_total} · $${m.cost_usd_total} · avg ${m.latency_ms_avg}ms · queue ${m.queue_depth}`;
@@ -217,33 +285,70 @@
     };
 
     document.getElementById("refresh").onclick = async () => {
+      if (!requireToken()) {
+        await loadHealth().catch(() => {});
+        return;
+      }
+      authBanner.classList.remove("show");
       await Promise.all([loadHealth(), loadJobs(), loadFunnel().catch(() => {})]);
     };
 
     let jobSource = null;
+    let sseRetryTimer = null;
+
+    function setSseState(state) {
+      sseState.textContent = state;
+      sseState.className = state;
+      sseBanner.classList.toggle("show", state === "retry");
+    }
+
     function connectJobStream() {
       if (jobSource) {
         jobSource.close();
         jobSource = null;
       }
-      const tok = encodeURIComponent(tokenEl.value);
+      if (sseRetryTimer) {
+        clearTimeout(sseRetryTimer);
+        sseRetryTimer = null;
+      }
+      if (!requireToken()) {
+        setSseState("off");
+        return;
+      }
+      const tok = encodeURIComponent(tokenValue());
       jobSource = new EventSource(`/api/jobs/stream?token=${tok}`);
+      setSseState("live");
       jobSource.addEventListener("jobs", async () => {
+        setSseState("live");
         await loadJobs().catch(() => {});
         await loadHealth().catch(() => {});
       });
+      jobSource.addEventListener("ping", () => setSseState("live"));
       jobSource.onerror = () => {
-        /* browser will retry; fall back poll keeps board alive */
+        setSseState("retry");
+        /* EventSource auto-retries; fall back poll keeps board alive */
       };
     }
 
-    tokenEl.addEventListener("change", connectJobStream);
+    tokenEl.addEventListener("change", () => {
+      requireToken();
+      connectJobStream();
+    });
+    tokenEl.addEventListener("input", () => {
+      if (tokenValue()) authBanner.classList.remove("show");
+    });
 
     (async () => {
-      await loadIssues();
+      requireToken();
+      try {
+        if (requireToken()) await loadIssues();
+      } catch (e) {
+        document.getElementById("statusBoard").textContent = String(e.message || e);
+      }
       await document.getElementById("refresh").onclick();
       connectJobStream();
       setInterval(() => {
+        if (!tokenValue()) return;
         loadJobs().catch(() => {});
         loadHealth().catch(() => {});
       }, 5000);

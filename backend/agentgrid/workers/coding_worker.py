@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import socket
 import traceback
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from agentgrid.agents.merge import integrate_result
 from agentgrid.agents.pipeline import run_pipeline
@@ -23,30 +25,64 @@ def process_job(job_id: str, worker_id: str) -> None:
     try:
         job = db.get(Job, job_id)
         if job is None:
+            log.warning("action=skip job_id=%s reason=missing", job_id)
             return
         if job.status == JobStatus.cancelled:
+            log.info("action=skip job_id=%s reason=cancelled", job_id)
             return
         if job.status not in {JobStatus.queued, JobStatus.failed}:
+            log.info(
+                "action=skip job_id=%s reason=bad_status status=%s",
+                job_id,
+                job.status.value,
+            )
             return
 
         job.status = JobStatus.planning
         job.worker_id = worker_id
         job.attempts += 1
         db.commit()
-        log.info("action=planning job_id=%s worker_id=%s attempt=%s", job_id, worker_id, job.attempts)
+        log.info(
+            "action=planning job_id=%s issue_id=%s mode=%s worker_id=%s attempt=%s timeout_s=%s",
+            job_id,
+            job.issue_id,
+            job.mode.value,
+            worker_id,
+            job.attempts,
+            settings.job_timeout_s,
+        )
 
         # Re-check cancel between stages (idempotent recovery).
         db.refresh(job)
         if job.status == JobStatus.cancelled:
+            log.info("action=skip job_id=%s reason=cancelled_mid_plan", job_id)
             return
 
         job.status = JobStatus.coding
         db.commit()
+        log.info("action=coding job_id=%s issue_id=%s", job_id, job.issue_id)
 
-        result = run_pipeline(job.issue_id, job.mode, job_id=job.id)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(run_pipeline, job.issue_id, job.mode, job.id)
+            try:
+                result = future.result(timeout=settings.job_timeout_s)
+            except FuturesTimeout:
+                future.cancel()
+                db.refresh(job)
+                if job.status != JobStatus.cancelled:
+                    job.status = JobStatus.failed
+                    job.error = f"job_timeout after {settings.job_timeout_s}s"
+                    db.commit()
+                log.error(
+                    "action=timeout job_id=%s timeout_s=%s",
+                    job_id,
+                    settings.job_timeout_s,
+                )
+                return
 
         db.refresh(job)
         if job.status == JobStatus.cancelled:
+            log.info("action=skip job_id=%s reason=cancelled_after_pipeline", job_id)
             return
 
         job.plan_json = result.plan
@@ -57,6 +93,12 @@ def process_job(job_id: str, worker_id: str) -> None:
         job.latency_ms = result.latency_ms
         job.status = JobStatus.verifying
         db.commit()
+        log.info(
+            "action=verifying job_id=%s succeeded=%s tokens=%s",
+            job_id,
+            result.succeeded,
+            result.tokens_used,
+        )
 
         if result.succeeded:
             job.status = JobStatus.integrating
@@ -72,10 +114,11 @@ def process_job(job_id: str, worker_id: str) -> None:
 
         db.commit()
         log.info(
-            "action=finish job_id=%s status=%s tokens=%s latency_ms=%s",
+            "action=finish job_id=%s status=%s tokens=%s cost_usd=%s latency_ms=%s",
             job_id,
             job.status.value,
             job.tokens_used,
+            job.cost_usd,
             job.latency_ms,
         )
     except Exception as exc:  # noqa: BLE001 — worker boundary
@@ -95,7 +138,13 @@ def run_forever(worker_id: str | None = None) -> None:
     init_db()
     worker_id = worker_id or f"{socket.gethostname()}-{id(object())}"
     broker = get_broker()
-    log.info("action=poll_start worker_id=%s", worker_id)
+    log.info(
+        "action=poll_start worker_id=%s use_redis=%s poll_ms=%s job_timeout_s=%s",
+        worker_id,
+        settings.use_redis,
+        settings.worker_poll_ms,
+        settings.job_timeout_s,
+    )
     while True:
         item = broker.dequeue(timeout_s=max(0.2, settings.worker_poll_ms / 1000))
         if not item:
@@ -115,6 +164,8 @@ def main() -> None:
         item = get_broker().dequeue(timeout_s=2.0)
         if item:
             process_job(item["job_id"], worker_id)
+        else:
+            log.info("action=idle reason=no_job")
         return
     run_forever(worker_id)
 
