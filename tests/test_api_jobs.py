@@ -30,7 +30,12 @@ def test_create_and_process_job(client):
 
 
 def test_health(client):
-    assert client.get("/api/health").json()["ok"] is True
+    body = client.get("/api/health").json()
+    assert body["ok"] is True
+    assert "workers_alive" in body
+    assert "queue_hint" in body
+    assert body["use_redis"] is False
+    assert body["redis_ok"] is None
 
 
 def test_jobs_require_bearer_token(client):
@@ -39,7 +44,7 @@ def test_jobs_require_bearer_token(client):
     assert r.json()["detail"] == "unauthorized"
 
 
-def test_jobs_accept_query_token_for_sse_style(client):
+def test_query_token_rejected_outside_sse(client):
     r = client.get("/api/jobs", params={"token": "test-token"})
-    assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    assert r.status_code == 401
+    assert "SSE" in r.json()["detail"] or "stream" in r.json()["detail"]

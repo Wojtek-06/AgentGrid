@@ -41,3 +41,35 @@ def test_jobs_stream_accepts_query_token(client):
         assert response.status_code == 200
         body = "".join(response.iter_text())
     assert "event:" in body
+
+
+def test_eval_latest_returns_published(client, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    import agentgrid.api.eval_api as eval_api
+
+    published = {
+        "n_issues": 1,
+        "single_success_rate": 0.0,
+        "multi_success_rate": 1.0,
+        "single_avg_tokens": 10,
+        "multi_avg_tokens": 20,
+        "rows": [],
+    }
+    path = tmp_path / "eval_results.json"
+    path.write_text(__import__("json").dumps(published), encoding="utf-8")
+    monkeypatch.setattr(eval_api, "_EVAL_PATH", Path(path))
+    r = client.get("/api/eval/latest", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["multi_success_rate"] == 1.0
+    assert "source" in body
+
+
+def test_worker_heartbeat_visible_on_health(client):
+    from agentgrid.workers.heartbeat import beat
+
+    beat("pytest-worker", status="idle")
+    body = client.get("/api/health").json()
+    assert body["workers_alive"] >= 1
+    assert any(w["worker_id"] == "pytest-worker" for w in body["workers"])

@@ -26,18 +26,17 @@ Regenerate after catalog changes; commit `data/eval_results.json` when rates cha
 
 ## Local demo (prep)
 
-```powershell
-# Terminal A — API
-$env:PYTHONPATH = "backend"
-$env:AGENTGRID_API_TOKEN = "dev-token"
-python -m uvicorn agentgrid.main:app --reload --port 8000
+Separate API + worker need Redis (in-process queue is pytest-only).
 
-# Terminal B — worker
-$env:PYTHONPATH = "backend"
-python -m agentgrid.workers.coding_worker
+```powershell
+docker compose up -d redis
+# Terminal A
+.\scripts\run_api.ps1
+# Terminal B
+.\scripts\run_worker.ps1
 ```
 
-Open http://127.0.0.1:8000 — token field `dev-token`. Confirm SSE shows **live** and health strip has a queue depth.
+Open http://127.0.0.1:8000 — token `dev-token`. Confirm SSE **live**, health shows `redis on · workers ≥ 1`.
 
 ---
 
@@ -48,7 +47,7 @@ Open http://127.0.0.1:8000 — token field `dev-token`. Confirm SSE shows **live
 | **0:00–0:45** | Open the board. Point at **AgentGrid** header + status board (counts) + metrics strip. Say: coordinator API, Redis/local queue, coding workers, verifier gate — no live LLM in CI. |
 | **0:45–1:45** | Issue dropdown → `qf-leakage-guard`. Mode → **single**. Click **Enqueue**. Wait until status **failed**. Click the row → show verify log / error in the detail pane. |
 | **1:45–2:45** | Same issue, mode → **multi**. Click **Enqueue**. Wait until **succeeded**. Click the row → show patch text + retry section in verify log. Call out status-board counts updating live (SSE **live**). |
-| **2:45–3:30** | Click **Run eval**. Scroll to **Eval summary** — multi **1.0** / single **~0.33**. Point at committed [`data/eval_results.json`](../data/eval_results.json). |
+| **2:45–3:30** | Click **Load published** (instant) or **Run eval**. Scroll to **Eval summary** — multi **100%** / single **~33%**. Point at committed [`data/eval_results.json`](../data/eval_results.json). |
 | **3:30–4:15** | Click a succeeded row → mention `.artifacts/<job_id>/` patch + `REVIEW_CHECKLIST.md`. Optional: enqueue the same issue again as multi → note `merge_conflict_risk` in plan/error. |
 | **4:15–5:00** | If seeded: **Refresh** → narrate research funnel insight + day-1 retention. Point at `req <id>` (X-Request-ID) and SSE reconnect hint if you toggle the network. Privacy one-liner: `DELETE /api/analytics/users/u1` erases + blocks. |
 
@@ -80,4 +79,5 @@ docker compose --profile postgres up --build api-pg worker-pg postgres redis
 - Dogfood sandboxes shaped like QuantForge leakage/EWMA + ChainVenue basis bugs
 - Merge conflict risk when re-patching the same sandbox file
 - Request-ID structured logs + SSE board for ops story
+- Health: Redis probe + worker heartbeats; query token SSE-only
 - Configurable job / verifier timeouts (`AGENTGRID_JOB_TIMEOUT_S`, `AGENTGRID_VERIFY_TIMEOUT_S`)

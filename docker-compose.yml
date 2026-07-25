@@ -11,6 +11,11 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres:
     profiles: ["postgres"]
@@ -47,7 +52,20 @@ services:
     volumes:
       - agdata:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   # Postgres-backed API (profile). Same host port 8000 as `api` — pick one stack.
   api-pg:
@@ -70,9 +88,21 @@ services:
       - agdata:/data
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
   # Scale with: docker compose up --scale worker=N
   worker:
@@ -91,8 +121,10 @@ services:
     volumes:
       - agdata:/data
     depends_on:
-      - redis
-      - api
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
   worker-pg:
     profiles: ["postgres"]
@@ -112,11 +144,11 @@ services:
       - agdata:/data
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       api-pg:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   agdata:

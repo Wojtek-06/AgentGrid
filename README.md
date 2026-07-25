@@ -62,23 +62,24 @@ Per-issue breakdown and interview script: [`docs/EVIDENCE_PACK.md`](docs/EVIDENC
 
 ## 60-second demo
 
+A separate worker process needs a **shared Redis queue** (in-process queue is for pytest only).
+
 ```powershell
 cd C:\Projekty\Quant\AgentGrid
 python -m pip install -r requirements.txt
-$env:PYTHONPATH = "$PWD\backend"
-$env:AGENTGRID_API_TOKEN = "dev-token"
+docker compose up -d redis          # once
 
-# Terminal A — API
-python -m uvicorn agentgrid.main:app --reload --port 8000
+# Terminal A
+.\scripts\run_api.ps1               # sets USE_REDIS=1 + token
 
-# Terminal B — worker
-python -m agentgrid.workers.coding_worker
+# Terminal B
+.\scripts\run_worker.ps1            # heartbeats show on /api/health
 ```
 
-1. Open http://127.0.0.1:8000 — token field should say `dev-token`.
+1. Open http://127.0.0.1:8000 — token `dev-token`; health strip should show `redis on · workers ≥ 1`.
 2. Select issue `qf-leakage-guard`, mode **single** → **Enqueue** → status goes `failed`.
 3. Same issue, mode **multi** → **Enqueue** → status goes `succeeded` (retry path).
-4. Click **Run eval** → multi **100%** vs single **33%** (matches [`data/eval_results.json`](data/eval_results.json)).
+4. Click **Load published** (instant) or **Run eval** → multi **100%** vs single **33%**.
 
 Optional: `python scripts\seed_analytics.py` then **Refresh** for the research funnel.
 
@@ -94,9 +95,9 @@ Protected routes expect:
 Authorization: Bearer <AGENTGRID_API_TOKEN>
 ```
 
-Default token is `dev-token` (see `.env.example`).  
-SSE (`EventSource`) cannot set headers, so the live board uses `?token=` as an equivalent.  
-Health (`GET /api/health`) is open; everything under `/api/jobs`, `/api/eval`, `/api/metrics`, `/api/analytics` requires the token.
+Default token is `dev-token` (see `.env.example`) — change it outside local demos.  
+SSE (`EventSource`) cannot set headers, so **only** `/api/jobs/stream` accepts `?token=` (Bearer everywhere else).  
+Health (`GET /api/health`) is open and reports queue depth, Redis reachability, and live worker heartbeats.
 
 ---
 
@@ -131,7 +132,7 @@ All rows except health require `Authorization: Bearer <token>` (or `?token=` on 
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/api/health` | — | Liveness + queue depth |
+| GET | `/api/health` | — | Liveness, queue, Redis, worker heartbeats |
 | GET | `/api/jobs/issues` | Bearer | Dogfood catalog |
 | POST | `/api/jobs` | Bearer | `{issue_id, mode, idempotency_key?}` |
 | GET | `/api/jobs` | Bearer | Board snapshot |
@@ -139,7 +140,8 @@ All rows except health require `Authorization: Bearer <token>` (or `?token=` on 
 | GET | `/api/jobs/{id}` | Bearer | Job detail + patch/log |
 | POST | `/api/jobs/{id}/cancel` | Bearer | Cancel queued/running |
 | POST | `/api/jobs/{id}/retry` | Bearer | Re-enqueue failed/cancelled |
-| POST | `/api/eval/run` | Bearer | Multi vs single summary |
+| GET | `/api/eval/latest` | Bearer | Published `data/eval_results.json` |
+| POST | `/api/eval/run` | Bearer | Re-run multi vs single harness |
 | GET | `/api/metrics/overview` | Bearer | Tokens / $ / latency / queue |
 | POST | `/api/analytics/events` | Bearer | Batch ingest |
 | GET | `/api/analytics/funnel` | Bearer | Funnel + anomalies + insight |

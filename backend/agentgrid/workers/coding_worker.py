@@ -13,6 +13,7 @@ from agentgrid.db import SessionLocal, init_db
 from agentgrid.models import Job, JobStatus
 from agentgrid.observability import configure_logging, get_logger, new_request_id, request_id_ctx
 from agentgrid.queue import get_broker
+from agentgrid.workers.heartbeat import beat
 
 configure_logging()
 log = get_logger("agentgrid.worker")
@@ -42,6 +43,7 @@ def process_job(job_id: str, worker_id: str) -> None:
         job.worker_id = worker_id
         job.attempts += 1
         db.commit()
+        beat(worker_id, status="planning")
         log.info(
             "action=planning job_id=%s issue_id=%s mode=%s worker_id=%s attempt=%s timeout_s=%s",
             job_id,
@@ -60,6 +62,7 @@ def process_job(job_id: str, worker_id: str) -> None:
 
         job.status = JobStatus.coding
         db.commit()
+        beat(worker_id, status="coding")
         log.info("action=coding job_id=%s issue_id=%s", job_id, job.issue_id)
 
         with ThreadPoolExecutor(max_workers=1) as pool:
@@ -138,6 +141,12 @@ def run_forever(worker_id: str | None = None) -> None:
     init_db()
     worker_id = worker_id or f"{socket.gethostname()}-{id(object())}"
     broker = get_broker()
+    if not settings.use_redis:
+        log.warning(
+            "action=poll_warn reason=in_process_queue worker_id=%s "
+            "hint=API and worker must share Redis (AGENTGRID_USE_REDIS=1)",
+            worker_id,
+        )
     log.info(
         "action=poll_start worker_id=%s use_redis=%s poll_ms=%s job_timeout_s=%s",
         worker_id,
@@ -146,6 +155,7 @@ def run_forever(worker_id: str | None = None) -> None:
         settings.job_timeout_s,
     )
     while True:
+        beat(worker_id, status="idle")
         item = broker.dequeue(timeout_s=max(0.2, settings.worker_poll_ms / 1000))
         if not item:
             continue

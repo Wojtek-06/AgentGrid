@@ -4,10 +4,12 @@
 
 | Zone | Trust |
 |------|--------|
-| API clients | Untrusted; bearer token required |
+| API clients | Untrusted; bearer token required (`secrets.compare_digest`) |
 | Coding workers | Trusted compute; still treat issue text as untrusted input |
 | Sandbox workspaces | Isolated copies under `.artifacts/`; no host git mutation |
 | Analytics store | Contains synthetic demo IDs only in seed data |
+
+**Token handling:** `Authorization: Bearer` on all protected routes. Query `?token=` is accepted **only** on `/api/jobs/stream` (EventSource cannot set headers) so tokens are not encouraged on arbitrary URLs/logs. Empty `AGENTGRID_API_TOKEN` fails closed (503). Default `dev-token` is for local demos; startup logs a warning.
 
 ## Coding-agent threats
 

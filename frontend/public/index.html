@@ -78,6 +78,11 @@
     #sseState.retry { color: var(--warn); }
     #sseState.off { color: var(--bad); }
     code.rid { font-size: 0.8rem; color: var(--ink); }
+    .empty { color: var(--muted); font-size: 0.9rem; line-height: 1.45; margin: 0.25rem 0 0; }
+    .eval-rates { display: flex; flex-wrap: wrap; gap: 1.25rem; margin: 0 0 0.85rem; font-variant-numeric: tabular-nums; }
+    .eval-rates strong { color: var(--ink); font-size: 1.15rem; }
+    #flash { margin: 0 0 0.5rem; }
+    input#token { min-width: 9rem; letter-spacing: 0.02em; }
   </style>
 </head>
 <body>
@@ -88,9 +93,13 @@
   <main>
     <div id="authBanner" class="banner">Set an API token (Bearer) before calling protected routes. Default: <code>dev-token</code>.</div>
     <div id="sseBanner" class="banner warn">Live stream disconnected — browser will retry; board still polls every 5s.</div>
+    <div id="workerBanner" class="banner warn">No live workers — start <code>scripts/run_worker.ps1</code> (needs Redis). Queued jobs will wait.</div>
+    <div id="queueBanner" class="banner warn"></div>
+    <div id="flash" class="banner"></div>
 
     <div class="row">
-      <label class="meta">API token <input id="token" value="dev-token" autocomplete="off" /></label>
+      <label class="meta">API token <input id="token" type="password" value="dev-token" autocomplete="off" spellcheck="false" /></label>
+      <button type="button" id="toggleToken" title="Show or hide token">Show</button>
       <button type="button" id="refresh">Refresh</button>
       <span class="meta" id="health">…</span>
       <span class="meta">SSE <span id="sseState" class="off">off</span></span>
@@ -109,6 +118,7 @@
             <option value="single">single</option>
           </select>
           <button class="primary" type="button" id="submit">Enqueue</button>
+          <button type="button" id="loadEval">Load published</button>
           <button type="button" id="runEval">Run eval</button>
           <button type="button" id="cancelJob">Cancel selected</button>
           <button type="button" id="retryJob">Retry selected</button>
@@ -117,40 +127,65 @@
           <thead><tr><th>Issue</th><th>Mode</th><th>Status</th><th>Tokens</th><th>$</th><th>ms</th></tr></thead>
           <tbody id="jobs"></tbody>
         </table>
-        <pre id="jobDetail"></pre>
+        <p class="empty" id="jobsEmpty">No jobs yet — enqueue an issue (single fails on leakage/EWMA; multi retries).</p>
+        <pre id="jobDetail" class="empty">Select a job row for patch / verify log.</pre>
       </section>
 
       <section>
         <h2>Research journey funnel</h2>
-        <p class="insight" id="insight">Load funnel after seeding analytics.</p>
-        <div id="funnel"></div>
+        <p class="insight" id="insight">Seed analytics to populate the funnel (<code>python scripts/seed_analytics.py</code>).</p>
+        <div id="funnel"><p class="empty">No funnel steps yet.</p></div>
         <p class="meta" id="retention" style="margin-top:0.75rem"></p>
         <h2 style="margin-top:1.25rem">Operator telemetry</h2>
-        <div id="opsFunnel"></div>
+        <div id="opsFunnel"><p class="empty">Operator funnel empty until jobs run.</p></div>
         <p class="meta" style="margin-top:1rem">Seed: <code>python scripts/seed_analytics.py</code></p>
       </section>
     </div>
 
     <section>
       <h2>Eval summary</h2>
-      <pre id="evalOut">Run eval to compare multi vs single agent success rates.</pre>
+      <div id="evalRates" class="eval-rates meta"></div>
+      <div id="evalTable"></div>
+      <pre id="evalOut" class="empty">Load published results (instant) or run eval to refresh rates.</pre>
     </section>
   </main>
   <script>
     const tokenEl = document.getElementById("token");
     const authBanner = document.getElementById("authBanner");
     const sseBanner = document.getElementById("sseBanner");
+    const workerBanner = document.getElementById("workerBanner");
+    const queueBanner = document.getElementById("queueBanner");
+    const flashEl = document.getElementById("flash");
     const sseState = document.getElementById("sseState");
     const lastRid = document.getElementById("lastRid");
+    const TOKEN_KEY = "agentgrid_api_token";
+
+    const saved = sessionStorage.getItem(TOKEN_KEY);
+    if (saved != null) tokenEl.value = saved;
 
     function tokenValue() {
       return (tokenEl.value || "").trim();
+    }
+
+    function persistToken() {
+      sessionStorage.setItem(TOKEN_KEY, tokenValue());
     }
 
     function requireToken() {
       const ok = Boolean(tokenValue());
       authBanner.classList.toggle("show", !ok);
       return ok;
+    }
+
+    function flash(msg, kind) {
+      if (!msg) {
+        flashEl.classList.remove("show", "warn");
+        flashEl.textContent = "";
+        return;
+      }
+      flashEl.textContent = msg;
+      flashEl.classList.add("show");
+      flashEl.classList.toggle("warn", kind === "warn");
     }
 
     const headers = () => ({
@@ -193,6 +228,37 @@
         parts.length ? parts.join("") : "<span>No jobs yet — enqueue an issue</span>";
     }
 
+    function renderEval(summary) {
+      const rates = document.getElementById("evalRates");
+      const table = document.getElementById("evalTable");
+      const raw = document.getElementById("evalOut");
+      if (!summary || summary.n_issues == null) {
+        rates.innerHTML = "";
+        table.innerHTML = "";
+        raw.className = "empty";
+        raw.textContent = "Load published results (instant) or run eval to refresh rates.";
+        return;
+      }
+      const pct = (x) => `${(x * 100).toFixed(0)}%`;
+      rates.innerHTML = `
+        <span>Single <strong class="${summary.single_success_rate < 1 ? "fail" : "ok"}">${pct(summary.single_success_rate)}</strong></span>
+        <span>Multi <strong class="ok">${pct(summary.multi_success_rate)}</strong></span>
+        <span class="meta">${summary.n_issues} issues · tokens ~${summary.single_avg_tokens} / ${summary.multi_avg_tokens}</span>`;
+      const rows = (summary.rows || []).map(r => `
+        <tr>
+          <td>${r.issue_id}</td>
+          <td class="${r.single.succeeded ? "ok" : "fail"}">${r.single.succeeded ? "ok" : "fail"} · ${r.single.tokens}</td>
+          <td class="${r.multi.succeeded ? "ok" : "fail"}">${r.multi.succeeded ? "ok" : "fail"} · ${r.multi.tokens}</td>
+        </tr>`).join("");
+      table.innerHTML = `
+        <table>
+          <thead><tr><th>Issue</th><th>Single</th><th>Multi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      raw.className = "";
+      raw.textContent = JSON.stringify(summary, null, 2);
+    }
+
     async function loadIssues() {
       const issues = await api("/api/jobs/issues");
       const sel = document.getElementById("issue");
@@ -202,6 +268,10 @@
     let selectedJobId = null;
 
     function renderBars(el, steps) {
+      if (!steps || !steps.length) {
+        el.innerHTML = `<p class="empty">No steps yet.</p>`;
+        return;
+      }
       const max = Math.max(...steps.map(s => s.sessions), 1);
       el.innerHTML = steps.map(s => `
         <div style="margin-bottom:0.65rem">
@@ -213,6 +283,7 @@
     async function loadJobs() {
       const jobs = await api("/api/jobs");
       renderStatusBoard(jobs);
+      document.getElementById("jobsEmpty").style.display = jobs.length ? "none" : "block";
       const tb = document.getElementById("jobs");
       tb.innerHTML = jobs.map(j => `
         <tr data-id="${j.id}" style="${j.id === selectedJobId ? "outline:1px solid var(--accent)" : ""}">
@@ -225,22 +296,29 @@
         </tr>`).join("");
       tb.querySelectorAll("tr").forEach(tr => tr.addEventListener("click", async () => {
         selectedJobId = tr.dataset.id;
-        const j = await api(`/api/jobs/${tr.dataset.id}`);
-        document.getElementById("jobDetail").textContent =
-          (j.patch_text || "") + "\n\n" + (j.verify_log || j.error || "");
-        await loadJobs();
+        try {
+          const j = await api(`/api/jobs/${tr.dataset.id}`);
+          const detail = document.getElementById("jobDetail");
+          detail.className = "";
+          detail.textContent =
+            (j.patch_text || "(no patch)") + "\n\n" + (j.verify_log || j.error || "(no log)");
+          await loadJobs();
+        } catch (e) {
+          flash(String(e.message || e), "warn");
+        }
       }));
     }
 
     async function loadFunnel() {
       const data = await api("/api/analytics/funnel");
-      document.getElementById("insight").textContent = data.insight?.text || "";
-      renderBars(document.getElementById("funnel"), data.funnel.steps);
+      document.getElementById("insight").textContent =
+        data.insight?.text || "Seed analytics to populate the funnel.";
+      renderBars(document.getElementById("funnel"), data.funnel?.steps || []);
       const ret = await api("/api/analytics/retention");
       document.getElementById("retention").textContent =
         `Retention: ${ret.users} users · day1 ${(ret.day1_retention * 100).toFixed(0)}% (anonymized cohorts)`;
       const ops = await api("/api/analytics/operator-funnel");
-      renderBars(document.getElementById("opsFunnel"), ops.funnel.steps);
+      renderBars(document.getElementById("opsFunnel"), ops.funnel?.steps || []);
     }
 
     async function loadHealth() {
@@ -248,15 +326,41 @@
       const rid = hRes.headers.get("X-Request-ID");
       if (rid) lastRid.textContent = rid;
       const h = await hRes.json();
+      const redisLabel = !h.use_redis ? "off" : (h.redis_ok === false ? "down" : "on");
       document.getElementById("health").textContent =
-        `v${h.version} · queue ${h.queue_depth} · redis ${h.use_redis ? "on" : "off"}`;
+        `v${h.version} · queue ${h.queue_depth} · redis ${redisLabel} · workers ${h.workers_alive ?? 0}`;
+      const needWorker =
+        (h.workers_alive ?? 0) === 0 &&
+        (h.queue_depth > 0 || h.use_redis === false || h.redis_ok === false);
+      workerBanner.classList.toggle("show", needWorker);
+      if (h.queue_hint) {
+        queueBanner.textContent = h.queue_hint;
+        queueBanner.classList.add("show");
+      } else {
+        queueBanner.classList.remove("show");
+      }
       if (!requireToken()) return;
       const m = await api("/api/metrics/overview");
       document.getElementById("metrics").textContent =
         `jobs ${m.jobs_total} · success ${(m.success_rate*100).toFixed(0)}% · tokens ${m.tokens_total} · $${m.cost_usd_total} · avg ${m.latency_ms_avg}ms · queue ${m.queue_depth}`;
     }
 
-    document.getElementById("submit").onclick = async () => {
+    async function withFlash(fn) {
+      flash("");
+      try {
+        await fn();
+      } catch (e) {
+        flash(String(e.message || e), "warn");
+      }
+    }
+
+    document.getElementById("toggleToken").onclick = () => {
+      const show = tokenEl.type === "password";
+      tokenEl.type = show ? "text" : "password";
+      document.getElementById("toggleToken").textContent = show ? "Hide" : "Show";
+    };
+
+    document.getElementById("submit").onclick = () => withFlash(async () => {
       await api("/api/jobs", {
         method: "POST",
         body: JSON.stringify({
@@ -265,24 +369,32 @@
         }),
       });
       await loadJobs();
-    };
+      await loadHealth();
+    });
 
-    document.getElementById("cancelJob").onclick = async () => {
-      if (!selectedJobId) return alert("Select a job row first");
+    document.getElementById("cancelJob").onclick = () => withFlash(async () => {
+      if (!selectedJobId) throw new Error("Select a job row first");
       await api(`/api/jobs/${selectedJobId}/cancel`, { method: "POST", body: "{}" });
       await loadJobs();
-    };
+    });
 
-    document.getElementById("retryJob").onclick = async () => {
-      if (!selectedJobId) return alert("Select a job row first");
+    document.getElementById("retryJob").onclick = () => withFlash(async () => {
+      if (!selectedJobId) throw new Error("Select a job row first");
       await api(`/api/jobs/${selectedJobId}/retry`, { method: "POST", body: "{}" });
       await loadJobs();
-    };
+    });
 
-    document.getElementById("runEval").onclick = async () => {
+    document.getElementById("loadEval").onclick = () => withFlash(async () => {
+      const summary = await api("/api/eval/latest");
+      renderEval(summary);
+    });
+
+    document.getElementById("runEval").onclick = () => withFlash(async () => {
+      flash("Running eval harness…", "warn");
       const summary = await api("/api/eval/run", { method: "POST", body: "{}" });
-      document.getElementById("evalOut").textContent = JSON.stringify(summary, null, 2);
-    };
+      flash("");
+      renderEval(summary);
+    });
 
     document.getElementById("refresh").onclick = async () => {
       if (!requireToken()) {
@@ -290,6 +402,7 @@
         return;
       }
       authBanner.classList.remove("show");
+      flash("");
       await Promise.all([loadHealth(), loadJobs(), loadFunnel().catch(() => {})]);
     };
 
@@ -331,10 +444,12 @@
     }
 
     tokenEl.addEventListener("change", () => {
+      persistToken();
       requireToken();
       connectJobStream();
     });
     tokenEl.addEventListener("input", () => {
+      persistToken();
       if (tokenValue()) authBanner.classList.remove("show");
     });
 
@@ -344,9 +459,14 @@
         if (requireToken()) await loadIssues();
       } catch (e) {
         document.getElementById("statusBoard").textContent = String(e.message || e);
+        flash(String(e.message || e), "warn");
       }
       await document.getElementById("refresh").onclick();
       connectJobStream();
+      try {
+        const published = await api("/api/eval/latest");
+        renderEval(published);
+      } catch (_) { /* optional */ }
       setInterval(() => {
         if (!tokenValue()) return;
         loadJobs().catch(() => {});
