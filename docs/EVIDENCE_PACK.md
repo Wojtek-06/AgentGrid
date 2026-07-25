@@ -28,9 +28,11 @@ python -m agentgrid.workers.coding_worker
 Open http://127.0.0.1:8000 — token `dev-token`.
 
 1. Enqueue `qf-leakage-guard` as **single** (fails) and **multi** (succeeds after retry).
-2. Click **Run eval** — show success-rate table.
-3. Seed analytics, Refresh — narrate grounded insight + funnel drop before `run_backtest`.
-4. Privacy: `DELETE /api/analytics/users/u1` then show event count 0.
+2. Click **Run eval** — show success-rate table; note metrics strip (tokens / $ / latency).
+3. Open succeeded job — show patch artifact path + `REVIEW_CHECKLIST.md` under `.artifacts/`.
+4. Seed analytics, Refresh — narrate grounded insight, day-1 retention, operator funnel.
+5. Privacy: `DELETE /api/analytics/users/u1` then show event count 0.
+6. Cancel a queued job / retry a failed one — operator recovery story.
 
 ## Docker
 

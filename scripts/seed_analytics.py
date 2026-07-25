@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed synthetic trading/research journey events for the analytics demo."""
+"""Seed synthetic trading/research + operator telemetry events."""
 
 from __future__ import annotations
 
@@ -25,18 +25,24 @@ STEPS = [
     "open_report",
 ]
 
+OPS_STEPS = [
+    "ops_submit_job",
+    "ops_watch_worker",
+    "ops_inspect_failure",
+    "ops_approve_merge",
+]
+
 
 def main() -> None:
     init_db()
     db = SessionLocal()
-    # Clear prior seed (dev only)
     db.execute(delete(AnalyticsEvent))
     db.commit()
 
-    base = datetime.now(timezone.utc) - timedelta(days=1)
-    # 40 sessions enter; sharp drop before run_backtest (anomaly)
+    day0 = datetime.now(timezone.utc) - timedelta(days=1)
+    day1 = datetime.now(timezone.utc)
     n_sessions = 40
-    reach = [40, 36, 30, 10, 8]  # intentional collapse at run_backtest
+    reach = [40, 36, 30, 10, 8]
 
     for i in range(n_sessions):
         user = f"user_{i % 12}"
@@ -51,14 +57,49 @@ def main() -> None:
                     user_id=user,
                     session_id=session,
                     name=step,
-                    ts=base + timedelta(minutes=i * 3 + step_i),
+                    ts=day0 + timedelta(minutes=i * 3 + step_i),
                     props={"source": "seed"},
                     consent=True,
                 )
             )
+        # Day-1 return for half the users (retention demo)
+        if i % 2 == 0:
+            db.add(
+                AnalyticsEvent(
+                    event_id=str(uuid.uuid4()),
+                    user_id=user,
+                    session_id=f"sess_{i}_d1",
+                    name="page_view_research",
+                    ts=day1 + timedelta(minutes=i),
+                    props={"source": "seed"},
+                    consent=True,
+                )
+            )
+
+    # Operator telemetry funnel
+    ops_reach = [20, 18, 12, 9]
+    for i in range(20):
+        user = f"ops_{i % 5}"
+        upsert_consent(db, user, True)
+        session = f"ops_sess_{i}"
+        for step_i, step in enumerate(OPS_STEPS):
+            if i >= ops_reach[step_i]:
+                break
+            db.add(
+                AnalyticsEvent(
+                    event_id=str(uuid.uuid4()),
+                    user_id=user,
+                    session_id=session,
+                    name=step,
+                    ts=day0 + timedelta(hours=2, minutes=i * 2 + step_i),
+                    props={"source": "seed_ops"},
+                    consent=True,
+                )
+            )
+
     db.commit()
     db.close()
-    print(f"Seeded {n_sessions} sessions with funnel reach {reach}")
+    print(f"Seeded research reach {reach} + operator reach {ops_reach}")
 
 
 if __name__ == "__main__":

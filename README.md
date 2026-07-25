@@ -84,13 +84,18 @@ Docker: `docker compose up --build` then scale workers with `--scale worker=2`.
 
 | Deliverable | Status |
 |-------------|--------|
-| Coordinator + workers + queue + verifier | MVP done (local/Redis) |
+| Coordinator + workers + queue + verifier | Done (local/Redis) |
 | Multi vs single eval | Done (`scripts/run_eval.py`) |
+| Merge artifacts + human review checklist | Done |
+| Cancel / retry / queue backpressure | Done |
+| Observability metrics API | Done (`/api/metrics/overview`) |
 | Analytics + privacy | Done (research journeys) |
-| Horizontal scale story | Documented + compose scale |
+| Operator telemetry + retention cohorts | Done |
+| Horizontal scale story | Documented + compose `--scale worker=N` |
 | Dogfood on QF/CV-shaped issues | Local sandboxes |
 | Evidence pack / demo video | Docs ready; video user-owned |
 
+Sibling status: [`docs/PORTFOLIO_STATUS.md`](docs/PORTFOLIO_STATUS.md)  
 Docs: [`docs/EVIDENCE_PACK.md`](docs/EVIDENCE_PACK.md) · [`docs/THREAT_PRIVACY.md`](docs/THREAT_PRIVACY.md)
 
 ---

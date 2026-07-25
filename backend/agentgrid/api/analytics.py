@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from agentgrid.analytics.funnels import compute_funnel, detect_anomalies, grounded_insight
+from agentgrid.analytics.funnels import (
+    compute_funnel,
+    compute_operator_funnel,
+    compute_retention,
+    detect_anomalies,
+    grounded_insight,
+)
 from agentgrid.analytics.privacy import delete_user_data, is_ingest_allowed, upsert_consent
 from agentgrid.api.deps import require_token
 from agentgrid.db import get_db
@@ -51,6 +57,16 @@ def funnel(db: Session = Depends(get_db)) -> dict:
     anomalies = detect_anomalies(f)
     insight = grounded_insight(f, anomalies)
     return {"funnel": f, "anomalies": anomalies, "insight": insight}
+
+
+@router.get("/operator-funnel")
+def operator_funnel(db: Session = Depends(get_db)) -> dict:
+    return {"funnel": compute_operator_funnel(db)}
+
+
+@router.get("/retention")
+def retention(db: Session = Depends(get_db)) -> dict:
+    return compute_retention(db)
 
 
 @router.post("/consent")

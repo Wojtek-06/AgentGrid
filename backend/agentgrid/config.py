@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     api_token: str = "dev-token"
     worker_poll_ms: int = 500
     use_redis: bool = False
+    max_queue_depth: int = 32
+    rate_limit_per_minute: int = 120
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
 
 

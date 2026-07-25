@@ -8,9 +8,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from agentgrid import __version__
-from agentgrid.api import analytics, eval_api, jobs
+from agentgrid.api import analytics, eval_api, jobs, metrics
 from agentgrid.config import ROOT, settings
 from agentgrid.db import init_db
+from agentgrid.middleware.rate_limit import RateLimitMiddleware
 from agentgrid.queue import get_broker
 
 
@@ -37,9 +38,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(RateLimitMiddleware)
+
 app.include_router(jobs.router)
 app.include_router(analytics.router)
 app.include_router(eval_api.router)
+app.include_router(metrics.router)
 
 frontend_dist = ROOT / "frontend" / "dist"
 frontend_public = ROOT / "frontend" / "public"

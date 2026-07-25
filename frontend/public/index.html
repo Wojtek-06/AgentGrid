@@ -72,6 +72,7 @@
       <button type="button" id="refresh">Refresh</button>
       <span class="meta" id="health">…</span>
     </div>
+    <div class="row meta" id="metrics">Metrics loading…</div>
 
     <div class="grid">
       <section>
@@ -84,6 +85,8 @@
           </select>
           <button class="primary" type="button" id="submit">Enqueue</button>
           <button type="button" id="runEval">Run eval</button>
+          <button type="button" id="cancelJob">Cancel selected</button>
+          <button type="button" id="retryJob">Retry selected</button>
         </div>
         <table>
           <thead><tr><th>Issue</th><th>Mode</th><th>Status</th><th>Tokens</th><th>$</th><th>ms</th></tr></thead>
@@ -96,6 +99,9 @@
         <h2>Research journey funnel</h2>
         <p class="insight" id="insight">Load funnel after seeding analytics.</p>
         <div id="funnel"></div>
+        <p class="meta" id="retention" style="margin-top:0.75rem"></p>
+        <h2 style="margin-top:1.25rem">Operator telemetry</h2>
+        <div id="opsFunnel"></div>
         <p class="meta" style="margin-top:1rem">Seed: <code>python scripts/seed_analytics.py</code></p>
       </section>
     </div>
@@ -130,11 +136,22 @@
       sel.innerHTML = issues.map(i => `<option value="${i.issue_id}">${i.issue_id}</option>`).join("");
     }
 
+    let selectedJobId = null;
+
+    function renderBars(el, steps) {
+      const max = Math.max(...steps.map(s => s.sessions), 1);
+      el.innerHTML = steps.map(s => `
+        <div style="margin-bottom:0.65rem">
+          <div class="meta">${s.step} · ${s.sessions}${s.conversion_from_prev != null ? ` · ${(s.conversion_from_prev*100).toFixed(0)}%` : ""}</div>
+          <div class="bar"><i style="width:${(s.sessions/max)*100}%"></i></div>
+        </div>`).join("");
+    }
+
     async function loadJobs() {
       const jobs = await api("/api/jobs");
       const tb = document.getElementById("jobs");
       tb.innerHTML = jobs.map(j => `
-        <tr data-id="${j.id}">
+        <tr data-id="${j.id}" style="${j.id === selectedJobId ? "outline:1px solid var(--accent)" : ""}">
           <td>${j.issue_id}</td>
           <td>${j.mode}</td>
           <td class="${statusClass(j.status)}">${j.status}</td>
@@ -143,27 +160,32 @@
           <td>${j.latency_ms}</td>
         </tr>`).join("");
       tb.querySelectorAll("tr").forEach(tr => tr.addEventListener("click", async () => {
+        selectedJobId = tr.dataset.id;
         const j = await api(`/api/jobs/${tr.dataset.id}`);
         document.getElementById("jobDetail").textContent =
           (j.patch_text || "") + "\n\n" + (j.verify_log || j.error || "");
+        await loadJobs();
       }));
     }
 
     async function loadFunnel() {
       const data = await api("/api/analytics/funnel");
       document.getElementById("insight").textContent = data.insight?.text || "";
-      const max = Math.max(...data.funnel.steps.map(s => s.sessions), 1);
-      document.getElementById("funnel").innerHTML = data.funnel.steps.map(s => `
-        <div style="margin-bottom:0.65rem">
-          <div class="meta">${s.step} · ${s.sessions}${s.conversion_from_prev != null ? ` · ${(s.conversion_from_prev*100).toFixed(0)}%` : ""}</div>
-          <div class="bar"><i style="width:${(s.sessions/max)*100}%"></i></div>
-        </div>`).join("");
+      renderBars(document.getElementById("funnel"), data.funnel.steps);
+      const ret = await api("/api/analytics/retention");
+      document.getElementById("retention").textContent =
+        `Retention: ${ret.users} users · day1 ${(ret.day1_retention * 100).toFixed(0)}% (anonymized cohorts)`;
+      const ops = await api("/api/analytics/operator-funnel");
+      renderBars(document.getElementById("opsFunnel"), ops.funnel.steps);
     }
 
     async function loadHealth() {
       const h = await fetch("/api/health").then(r => r.json());
       document.getElementById("health").textContent =
         `v${h.version} · queue ${h.queue_depth} · redis ${h.use_redis ? "on" : "off"}`;
+      const m = await api("/api/metrics/overview");
+      document.getElementById("metrics").textContent =
+        `jobs ${m.jobs_total} · success ${(m.success_rate*100).toFixed(0)}% · tokens ${m.tokens_total} · $${m.cost_usd_total} · avg ${m.latency_ms_avg}ms · queue ${m.queue_depth}`;
     }
 
     document.getElementById("submit").onclick = async () => {
@@ -174,6 +196,18 @@
           mode: document.getElementById("mode").value,
         }),
       });
+      await loadJobs();
+    };
+
+    document.getElementById("cancelJob").onclick = async () => {
+      if (!selectedJobId) return alert("Select a job row first");
+      await api(`/api/jobs/${selectedJobId}/cancel`, { method: "POST", body: "{}" });
+      await loadJobs();
+    };
+
+    document.getElementById("retryJob").onclick = async () => {
+      if (!selectedJobId) return alert("Select a job row first");
+      await api(`/api/jobs/${selectedJobId}/retry`, { method: "POST", body: "{}" });
       await loadJobs();
     };
 
@@ -189,7 +223,10 @@
     (async () => {
       await loadIssues();
       await document.getElementById("refresh").onclick();
-      setInterval(() => loadJobs().catch(() => {}), 2000);
+      setInterval(() => {
+        loadJobs().catch(() => {});
+        loadHealth().catch(() => {});
+      }, 2000);
     })();
   </script>
 </body>

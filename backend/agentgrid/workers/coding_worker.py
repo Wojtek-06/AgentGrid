@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import socket
-import time
 import traceback
 
+from agentgrid.agents.merge import integrate_result
 from agentgrid.agents.pipeline import run_pipeline
 from agentgrid.config import settings
 from agentgrid.db import SessionLocal, init_db
-from agentgrid.models import AgentMode, Artifact, Job, JobStatus
+from agentgrid.models import Job, JobStatus
 from agentgrid.queue import get_broker
 
 
@@ -18,6 +18,8 @@ def process_job(job_id: str, worker_id: str) -> None:
         job = db.get(Job, job_id)
         if job is None:
             return
+        if job.status == JobStatus.cancelled:
+            return
         if job.status not in {JobStatus.queued, JobStatus.failed}:
             return
 
@@ -26,10 +28,19 @@ def process_job(job_id: str, worker_id: str) -> None:
         job.attempts += 1
         db.commit()
 
+        # Re-check cancel between stages (idempotent recovery).
+        db.refresh(job)
+        if job.status == JobStatus.cancelled:
+            return
+
         job.status = JobStatus.coding
         db.commit()
 
         result = run_pipeline(job.issue_id, job.mode, job_id=job.id)
+
+        db.refresh(job)
+        if job.status == JobStatus.cancelled:
+            return
 
         job.plan_json = result.plan
         job.patch_text = result.patch_text
@@ -40,25 +51,23 @@ def process_job(job_id: str, worker_id: str) -> None:
         job.status = JobStatus.verifying
         db.commit()
 
-        job.status = JobStatus.integrating if result.succeeded else JobStatus.failed
         if result.succeeded:
+            job.status = JobStatus.integrating
+            db.commit()
+            integrate_result(db, job, result)
             job.status = JobStatus.succeeded
-            job.error = None
+            if not (job.error and "merge_conflict" in job.error):
+                job.error = None
         else:
+            job.status = JobStatus.failed
             job.error = result.error
-        db.add(
-            Artifact(
-                job_id=job.id,
-                kind="workspace",
-                path=str(result.workspace),
-                meta_json={"succeeded": result.succeeded},
-            )
-        )
+            integrate_result(db, job, result)
+
         db.commit()
     except Exception as exc:  # noqa: BLE001 — worker boundary
         db.rollback()
         job = db.get(Job, job_id)
-        if job:
+        if job and job.status != JobStatus.cancelled:
             job.status = JobStatus.failed
             job.error = f"{exc}\n{traceback.format_exc()}"
             db.commit()
