@@ -6,7 +6,7 @@ Last updated: 2026-08-30
 |---------|------|-------------|--------|
 | **1 — QuantForge** | https://github.com/Wojtek-06/QuantForge | `8ecc7ee` | **Done for sprint** — LOB/MM/backtest, stops, signals, stress configs, Docker, evidence scripts. Your job: run evidence + optional demo video. |
 | **2 — ChainVenue** | https://github.com/Wojtek-06/ChainVenue | `4c8cfb9` | **Done for sprint** — EVM lab, CPAMM, hedge path, adversarial tests, dashboard ledger, threat/latency docs. Your job: Anvil demo + optional video. |
-| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | *(public)* | **Public-ready** — MIT, recruiter README, secret-clean, CI badge. Eval board, SSE, Redis demo scripts, evidence pack. Your job: optional screenshot + demo video. |
+| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | `81a4da4` | **Public-ready** — MIT, recruiter README, secret-clean, CI badge. Eval board, SSE, Redis demo scripts, evidence pack. Your job: optional screenshot + demo video. |
 
 ## QuantForge — what “done” means
 
