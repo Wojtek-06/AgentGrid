@@ -1,6 +1,7 @@
 # AgentGrid
 
 [![CI](https://github.com/Wojtek-06/AgentGrid/actions/workflows/ci.yml/badge.svg)](https://github.com/Wojtek-06/AgentGrid/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Greenfield **horizontally scaled AI platform** with two verticals on shared infra:
 
@@ -9,8 +10,14 @@ Greenfield **horizontally scaled AI platform** with two verticals on shared infr
 
 > Placement pitch: *I can ship distributed agent systems with evals and a real analytics product surface—not a chat demo.*
 
-**Repo:** https://github.com/Wojtek-06/AgentGrid  
+**No third-party API keys required.** Planners and workers use offline stubs; CI and local demos never call OpenAI/Anthropic/etc. Local auth uses the documented demo token `dev-token` (see `.env.example`).
+
+**Repo:** https://github.com/Wojtek-06/AgentGrid · **License:** [MIT](LICENSE)  
 **Non-goals:** Fitness-App code/domain; live extractive agents against private remotes; LLM network calls in CI.
+
+<!-- Screenshot: add docs/images/dashboard.png and uncomment:
+![AgentGrid dashboard](docs/images/dashboard.png)
+-->
 
 ---
 
@@ -60,21 +67,29 @@ Per-issue breakdown and interview script: [`docs/EVIDENCE_PACK.md`](docs/EVIDENC
 
 ---
 
-## 60-second demo
+## Quick start
 
 A separate worker process needs a **shared Redis queue** (in-process queue is for pytest only).
+
+**Redis (pick one):**
+
+- **WSL:** `sudo service redis-server start` (or `redis-server`) on `localhost:6379`
+- **Docker:** `docker compose up -d redis`
 
 ```powershell
 cd C:\Projekty\Quant\AgentGrid
 python -m pip install -r requirements.txt
-docker compose up -d redis          # once
 
-# Terminal A
-.\scripts\run_api.ps1               # sets USE_REDIS=1 + token
+# Terminal A — API (sets USE_REDIS=1 + demo token)
+.\scripts\run_api.ps1
 
-# Terminal B
-.\scripts\run_worker.ps1            # heartbeats show on /api/health
+# Terminal B — coding worker (heartbeats on /api/health)
+.\scripts\run_worker.ps1
 ```
+
+Tests (no Redis required): `$env:PYTHONPATH="backend"; python -m pytest -q`
+
+### 60-second demo
 
 1. Open http://127.0.0.1:8000 — token `dev-token`; health strip should show `redis on · workers ≥ 1`.
 2. Select issue `qf-leakage-guard`, mode **single** → **Enqueue** → status goes `failed`.
@@ -82,8 +97,6 @@ docker compose up -d redis          # once
 4. Click **Load published** (instant) or **Run eval** → multi **100%** vs single **33%**.
 
 Optional: `python scripts\seed_analytics.py` then **Refresh** for the research funnel.
-
-Tests: `$env:PYTHONPATH="backend"; python -m pytest -q`
 
 ---
 
@@ -101,14 +114,7 @@ Health (`GET /api/health`) is open and reports queue depth, Redis reachability, 
 
 ---
 
-## Quick start extras
-
-```powershell
-python scripts\run_eval.py          # refresh data/eval_results.json
-python scripts\seed_analytics.py    # demo funnel + retention
-```
-
-**Docker (SQLite default):**
+## Docker (optional)
 
 ```bash
 # API + Redis + one worker
@@ -118,10 +124,17 @@ docker compose up --build
 docker compose up --build --scale worker=2
 ```
 
-**Optional Postgres profile** (keeps SQLite for CI/default):
+**Optional Postgres profile** (SQLite remains CI/default):
 
 ```bash
 docker compose --profile postgres up --build api-pg worker-pg postgres redis
+```
+
+Extras:
+
+```powershell
+python scripts\run_eval.py          # refresh data/eval_results.json
+python scripts\seed_analytics.py    # demo funnel + retention
 ```
 
 ---
@@ -173,7 +186,7 @@ Responses include `X-Request-ID` (echo client header or generate). API + worker 
 | Evidence pack / demo video | Docs ready; video user-owned |
 
 Sibling status: [`docs/PORTFOLIO_STATUS.md`](docs/PORTFOLIO_STATUS.md)  
-Docs: [`docs/EVIDENCE_PACK.md`](docs/EVIDENCE_PACK.md) · [`docs/THREAT_PRIVACY.md`](docs/THREAT_PRIVACY.md)
+Docs: [`docs/EVIDENCE_PACK.md`](docs/EVIDENCE_PACK.md) · [`docs/THREAT_PRIVACY.md`](docs/THREAT_PRIVACY.md) · Screenshots: [`docs/images/`](docs/images/)
 
 ---
 

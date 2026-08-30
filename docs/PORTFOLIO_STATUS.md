@@ -1,12 +1,12 @@
 # Portfolio status (three flagships)
 
-Last updated: 2026-07-25
+Last updated: 2026-08-30
 
 | Project | Repo | Latest ship | Status |
 |---------|------|-------------|--------|
 | **1 — QuantForge** | https://github.com/Wojtek-06/QuantForge | `8ecc7ee` | **Done for sprint** — LOB/MM/backtest, stops, signals, stress configs, Docker, evidence scripts. Your job: run evidence + optional demo video. |
 | **2 — ChainVenue** | https://github.com/Wojtek-06/ChainVenue | `4c8cfb9` | **Done for sprint** — EVM lab, CPAMM, hedge path, adversarial tests, dashboard ledger, threat/latency docs. Your job: Anvil demo + optional video. |
-| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | `fb0602b` | **Placement-ready** — eval board, SSE, worker heartbeats, Redis demo scripts, SSE-only query token, evidence 5-min script. Your job: optional demo video. |
+| **3 — AgentGrid** | https://github.com/Wojtek-06/AgentGrid | *(public)* | **Public-ready** — MIT, recruiter README, secret-clean, CI badge. Eval board, SSE, Redis demo scripts, evidence pack. Your job: optional screenshot + demo video. |
 
 ## QuantForge — what “done” means
 
@@ -24,7 +24,7 @@ Last updated: 2026-07-25
 - Docs: threat model, latency/fee regimes, evidence pack  
 - Forge + **pytest 27** last local run  
 
-## AgentGrid — placement-ready checklist
+## AgentGrid — public-ready checklist
 
 | Slice | State |
 |-------|--------|
@@ -44,5 +44,8 @@ Last updated: 2026-07-25
 | Operator funnel + retention cohorts | Done |
 | Optional Postgres compose profile | Done |
 | Evidence pack (5-min interview script) | Done |
+| MIT LICENSE + public GitHub | Done |
+| Recruiter README (no 3P API keys) | Done |
 | Real LLM planner (optional) | Later — offline stubs only |
+| Dashboard screenshot | You (`docs/images/`) |
 | User demo video | You |
